@@ -536,8 +536,39 @@ void Halfedge_Mesh::bevel_face_positions(const std::vector<Vec3>& start_position
     Splits all non-triangular faces into triangles.
 */
 void Halfedge_Mesh::triangulate() {
-
-    // For each face...
+    /* Ensure a face is a triangle per iteration possibly creating new polygon faces to revisit in a
+     * future iteration. */
+    for(FaceRef f = faces_begin(); f != faces_end(); f++) {
+        if(f->degree() < 4) continue;
+        HalfedgeRef faceHalfedge = f->halfedge();
+        /* Create a new edge and face. */
+        HalfedgeRef newHalfedge = new_halfedge();
+        HalfedgeRef newHalfedgeTwin = new_halfedge();
+        EdgeRef newEdge = new_edge();
+        FaceRef newFace = new_face();
+        /* Wire up the halfedges. */
+        newHalfedge->vertex() = faceHalfedge->next()->twin()->vertex();
+        newHalfedgeTwin->vertex() = faceHalfedge->vertex();
+        newHalfedgeTwin->next() = faceHalfedge->next()->next();
+        newHalfedge->next() = faceHalfedge;
+        faceHalfedge->prev()->next() = newHalfedgeTwin;
+        faceHalfedge->next()->next() = newHalfedge;
+        /* Fix the faces. */
+        newHalfedge->face() = f;
+        f->halfedge() = newHalfedge;
+        newFace->halfedge() = newHalfedgeTwin;
+        HalfedgeRef updateHalfedge = newHalfedgeTwin;
+        do {
+            updateHalfedge->face() = newFace;
+            updateHalfedge = updateHalfedge->next();
+        } while(updateHalfedge != newHalfedgeTwin);
+        /* Twin up the new edge. */
+        newHalfedge->twin() = newHalfedgeTwin;
+        newHalfedgeTwin->twin() = newHalfedge;
+        newHalfedge->edge() = newEdge;
+        newHalfedgeTwin->edge() = newEdge;
+        newEdge->halfedge() = newHalfedge;
+    }
 }
 
 /* Note on the quad subdivision process:
