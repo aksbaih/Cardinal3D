@@ -184,9 +184,22 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_face(Halfedge_Me
     flipped edge.
 */
 std::optional<Halfedge_Mesh::EdgeRef> Halfedge_Mesh::flip_edge(Halfedge_Mesh::EdgeRef e) {
-
-    (void)e;
-    return std::nullopt;
+    if(e->on_boundary()) return std::nullopt;
+    /* Jump each halfedge by one edge. */
+    for(HalfedgeRef halfedge : {e->halfedge(), e->halfedge()->twin()}) {
+        HalfedgeRef jumpHalfedge = halfedge->twin()->next();
+        /* Detach. */
+        halfedge->prev()->next() = jumpHalfedge;
+        halfedge->vertex()->halfedge() = jumpHalfedge;
+        /* Attache. */
+        halfedge->vertex() = jumpHalfedge->twin()->vertex();
+        jumpHalfedge->face() = halfedge->face();
+        halfedge->twin()->next() = jumpHalfedge->next();
+        jumpHalfedge->next() = halfedge;
+        /* Fix face. */
+        halfedge->face()->halfedge() = halfedge;
+    }
+    return e;
 }
 
 /*
@@ -195,9 +208,73 @@ std::optional<Halfedge_Mesh::EdgeRef> Halfedge_Mesh::flip_edge(Halfedge_Mesh::Ed
     the edge that was split, rather than the new edges.
 */
 std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::split_edge(Halfedge_Mesh::EdgeRef e) {
+    /* Operation only for triangle faces possibly on a boundary. */
+    if((!e->halfedge()->is_boundary() && e->halfedge()->face()->degree() != 3) ||
+       (!e->halfedge()->twin()->is_boundary() && e->halfedge()->twin()->face()->degree() != 3))
+        return std::nullopt;
+    /* Note: Any element starting with newXXX is forward from the new vertex. */
+    HalfedgeRef originalHalfedge = e->halfedge();
+    HalfedgeRef originalHalfedgeTwin = originalHalfedge->twin();
+    /* Create a new vertex. */
+    VertexRef newVertex = new_vertex();
+    newVertex->pos =
+        0.5 * (originalHalfedge->vertex()->pos + originalHalfedge->twin()->vertex()->pos);
+    /* Create a new forward halfedge and wire it. */
+    HalfedgeRef newHalfedge = new_halfedge();
+    newHalfedge->vertex() = newVertex;
+    newVertex->halfedge() = newHalfedge;
+    newHalfedge->face() = originalHalfedge->face();
+    newHalfedge->next() = originalHalfedge->next();
+    originalHalfedge->next() = newHalfedge;
+    /* Create a new backward halfedge and wire it. */
+    HalfedgeRef newTwinHalfedge = new_halfedge();
+    newTwinHalfedge->vertex() = newVertex;
+    newTwinHalfedge->face() = originalHalfedgeTwin->face();
+    newTwinHalfedge->next() = originalHalfedgeTwin->next();
+    originalHalfedgeTwin->next() = newTwinHalfedge;
+    /* Wire up new twins into new edges. */
+    EdgeRef newEdge = new_edge();
+    newEdge->halfedge() = newHalfedge;
+    newHalfedge->twin() = originalHalfedgeTwin;
+    originalHalfedgeTwin->twin() = newHalfedge;
+    newHalfedge->edge() = newEdge;
+    originalHalfedgeTwin->edge() = newEdge;
+    originalHalfedge->twin() = newTwinHalfedge;
+    newTwinHalfedge->twin() = originalHalfedge;
+    newTwinHalfedge->edge() = e;
+    /* At this point, we successfully added the new vertex into the mesh. */
 
-    (void)e;
-    return std::nullopt;
+    /* Now create the two new edges from the new vertex. */
+    for(HalfedgeRef startingHalfedge : {newHalfedge, newTwinHalfedge}) {
+        /* Don't split the boundary face. */
+        if(startingHalfedge->is_boundary()) continue;
+        /* Start by creating the twin. */
+        HalfedgeRef newEdgeHalfedgeTwin = new_halfedge();
+        newEdgeHalfedgeTwin->vertex() = newVertex;
+        newEdgeHalfedgeTwin->next() = startingHalfedge->next()->next();
+        startingHalfedge->prev()->next() = newEdgeHalfedgeTwin;
+        newEdgeHalfedgeTwin->face() = newEdgeHalfedgeTwin->next()->face();
+        newEdgeHalfedgeTwin->face()->halfedge() = newEdgeHalfedgeTwin;
+        /* Now create the other halfedge, creating a new face. */
+        HalfedgeRef newEdgeHalfedge = new_halfedge();
+        FaceRef newEdgeFace = new_face();
+        startingHalfedge->face() = newEdgeFace;
+        startingHalfedge->next()->face() = newEdgeFace;
+        newEdgeHalfedge->vertex() = startingHalfedge->next()->next()->vertex();
+        newEdgeHalfedge->next() = startingHalfedge;
+        startingHalfedge->next()->next() = newEdgeHalfedge;
+        newEdgeHalfedge->face() = newEdgeHalfedge->next()->face();
+        newEdgeHalfedge->face()->halfedge() = newEdgeHalfedge;
+        /* Finally, twin up the halfedges into a new edge. */
+        EdgeRef newEdgeSplit = new_edge();
+        newEdgeHalfedge->twin() = newEdgeHalfedgeTwin;
+        newEdgeHalfedgeTwin->twin() = newEdgeHalfedge;
+        newEdgeSplit->halfedge() = newEdgeHalfedge;
+        newEdgeHalfedge->edge() = newEdgeSplit;
+        newEdgeHalfedgeTwin->edge() = newEdgeSplit;
+    }
+
+    return newVertex;
 }
 
 /* Note on the beveling process:
