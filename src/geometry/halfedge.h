@@ -209,6 +209,11 @@ public:
     std::optional<FaceRef> erase_edge(EdgeRef e);
 
     /*
+        Replaces a degenerate 2-gon by a single edge.
+    */
+    std::optional<EdgeRef> erase_2gon(FaceRef f);
+
+    /*
         Collapse an edge, returning a pointer to the collapsed vertex
     */
     std::optional<VertexRef> collapse_edge(EdgeRef e);
@@ -447,6 +452,13 @@ public:
         }
         HalfedgeCRef next() const {
             return _next;
+        }
+
+        // Retrieves the previous halfedge
+        HalfedgeRef prev() {
+            HalfedgeRef cur = _next;
+            while(cur->next()->id() != id()) cur = cur->next();
+            return cur;
         }
 
         // Retrieves the associated vertex

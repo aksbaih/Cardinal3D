@@ -45,19 +45,128 @@ std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::erase_vertex(Halfedge_Mesh:
     merged face.
  */
 std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::erase_edge(Halfedge_Mesh::EdgeRef e) {
+    if(e->on_boundary()) return std::nullopt;
 
-    (void)e;
-    return std::nullopt;
+    HalfedgeRef removedHalfedge = e->halfedge();
+    HalfedgeRef removedHalfedgeTwin = removedHalfedge->twin();
+    FaceRef finalFace = removedHalfedgeTwin->face();
+    FaceRef removedFace = removedHalfedge->face();
+
+    /* Fix dependent halfedge in finalFace. */
+    HalfedgeRef updateHalfedge = removedHalfedgeTwin->next();
+    while(updateHalfedge->next() != removedHalfedgeTwin) updateHalfedge = updateHalfedge->next();
+    updateHalfedge->next() = removedHalfedge->next();
+
+    /* Fix dependent halfedges in removedFace. */
+    while(updateHalfedge->next() != removedHalfedge) {
+        updateHalfedge = updateHalfedge->next();
+        updateHalfedge->face() = finalFace;
+    }
+    updateHalfedge->next() = removedHalfedgeTwin->next();
+
+    /* Fix dependent vertices. */
+    removedHalfedge->next()->vertex()->halfedge() = removedHalfedge->next();
+    removedHalfedgeTwin->next()->vertex()->halfedge() = removedHalfedgeTwin->next();
+
+    /* Fix dependent face. */
+    finalFace->halfedge() = removedHalfedgeTwin->next();
+
+    /* Erase dangling elements. */
+    erase(removedHalfedge);
+    erase(removedHalfedgeTwin);
+    erase(removedFace);
+    erase(e);
+
+    return finalFace;
+}
+
+/*
+    Replaces a degenerate 2-gon by a single edge.
+ */
+std::optional<Halfedge_Mesh::EdgeRef> Halfedge_Mesh::erase_2gon(Halfedge_Mesh::FaceRef f) {
+    /* Ignore non 2-gons including single edge 2-gons. */
+    if(f->degree() != 2 || f->halfedge()->edge()->id() == f->halfedge()->next()->edge()->id())
+        return std::nullopt;
+
+    HalfedgeRef removedHalfedge = f->halfedge();
+    HalfedgeRef removedHalfedgeTwin = removedHalfedge->twin();
+    EdgeRef removedEdge = removedHalfedge->edge();
+    FaceRef finalFace = removedHalfedgeTwin->face();
+    HalfedgeRef finalHalfedge = removedHalfedge->next();
+
+    /* Fix halfedges. */
+    finalHalfedge->next() = removedHalfedgeTwin->next();
+    removedHalfedgeTwin->prev()->next() = finalHalfedge;
+
+    /* Fix vertices. */
+    finalHalfedge->vertex()->halfedge() = finalHalfedge;
+    finalHalfedge->twin()->vertex()->halfedge() = finalHalfedge->twin();
+
+    /* Fix faces. */
+    finalFace->halfedge() = finalHalfedge;
+    finalHalfedge->face() = finalFace;
+
+    /* Erase dangling elements. */
+    erase(removedHalfedge);
+    erase(removedHalfedgeTwin);
+    erase(removedEdge);
+    erase(f);
+
+    return finalHalfedge->edge();
 }
 
 /*
     This method should collapse the given edge and return an iterator to
     the new vertex created by the collapse.
+    Rejects a collapse that results in a 0-degree vertex.
 */
 std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_edge(Halfedge_Mesh::EdgeRef e) {
+    if(e->halfedge()->vertex()->degree() == 1 && e->halfedge()->twin()->vertex()->degree() == 1)
+        return std::nullopt;
 
-    (void)e;
-    return std::nullopt;
+    HalfedgeRef collapsedHalfedge = e->halfedge();
+    FaceRef collapsedFace = collapsedHalfedge->face();
+    HalfedgeRef collapsedHalfedgeTwin = collapsedHalfedge->twin();
+    FaceRef collapsedFaceTwin = collapsedHalfedgeTwin->face();
+    VertexRef removedVertex = collapsedHalfedgeTwin->vertex();
+    VertexRef finalVertex = collapsedHalfedge->vertex();
+
+    /* Update one halfedge per iter going clockwise around removedVertex. */
+    HalfedgeRef updateHalfedge = collapsedHalfedge->next();
+    while(updateHalfedge != collapsedHalfedgeTwin) {
+        updateHalfedge->vertex() = finalVertex;
+        finalVertex->halfedge() = updateHalfedge;
+        updateHalfedge = updateHalfedge->twin()->next();
+    }
+
+    /* Fix dependent halfedges. */
+    updateHalfedge = collapsedHalfedge;
+    while(updateHalfedge->next() != collapsedHalfedge) updateHalfedge = updateHalfedge->next();
+    updateHalfedge->next() = collapsedHalfedge->next();
+    updateHalfedge = collapsedHalfedgeTwin;
+    while(updateHalfedge->next() != collapsedHalfedgeTwin) updateHalfedge = updateHalfedge->next();
+    updateHalfedge->next() = collapsedHalfedgeTwin->next();
+
+    /* Fix dependent faces. */
+    if(collapsedFace->halfedge() == collapsedHalfedge)
+        collapsedFace->halfedge() = collapsedHalfedge->next();
+    if(collapsedFaceTwin->halfedge() == collapsedHalfedgeTwin)
+        collapsedFaceTwin->halfedge() = collapsedHalfedgeTwin->next();
+
+    /* Remove any resulting 2-gons. */
+    if(collapsedFace->degree() == 2) erase_2gon(collapsedFace);
+    if(collapsedFaceTwin->degree() == 2) erase_2gon(collapsedFaceTwin);
+
+    /* Calculate final vertex geometry. */
+    finalVertex->pos = 0.5 * (finalVertex->pos + removedVertex->pos);
+
+    /* Erase dangling elements. */
+    erase(removedVertex);
+    erase(collapsedHalfedge);
+    erase(collapsedHalfedgeTwin);
+    erase(e);
+
+    return finalVertex;
 }
 
 /*
