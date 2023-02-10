@@ -666,9 +666,35 @@ void Halfedge_Mesh::catmullclark_subdivide_positions() {
 
     // Faces
 
+    for(FaceRef f = faces_begin(); f != faces_end(); f++) f->new_pos = f->center();
+
     // Edges
 
+    for(EdgeRef e = edges_begin(); e != edges_end(); e++) {
+        const Vec3 AF =
+            (e->halfedge()->face()->new_pos + e->halfedge()->twin()->face()->new_pos) / 2.f;
+        const Vec3 ME = e->center();
+        e->new_pos = (AF + ME) / 2.f;
+    }
+
     // Vertices
+
+    for(VertexRef v = vertices_begin(); v != vertices_end(); v++) {
+        /* Compute F and n. */
+        int n = 0;
+        Vec3 F(0.f, 0.f, 0.f);
+        Vec3 R(0.f, 0.f, 0.f);
+        HalfedgeCRef currHalfedge = v->halfedge();
+        do {
+            n++;
+            R += currHalfedge->edge()->center();
+            F += currHalfedge->face()->new_pos;
+            currHalfedge = currHalfedge->twin()->next();
+        } while(currHalfedge != v->halfedge());
+        R /= (float)n;
+        F /= (float)n;
+        v->new_pos = (F + 2.f * R + (float)(n - 3) * v->pos) / (float)n;
+    }
 }
 
 /*
