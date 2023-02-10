@@ -1,10 +1,9 @@
 
+#include "../geometry/halfedge.h"
+#include "debug.h"
 #include <queue>
 #include <set>
 #include <unordered_map>
-
-#include "../geometry/halfedge.h"
-#include "debug.h"
 
 /* Note on local operation return types:
 
@@ -510,7 +509,8 @@ void Halfedge_Mesh::bevel_face_positions(const std::vector<Vec3>& start_position
                                          float normal_offset) {
 
     if(flip_orientation) normal_offset = -normal_offset;
-    if(tangent_offset < 0.0001) tangent_offset = 0.0001;
+    // if(tangent_offset < 0.01) tangent_offset = 0.01;
+    tangent_offset = exp(tangent_offset);
     std::vector<HalfedgeRef> new_halfedges;
     auto h = face->halfedge();
     do {
@@ -789,6 +789,17 @@ struct Edge_Record {
         //    Edge_Record::optimal.
         // -> Also store the cost associated with collapsing this edge in
         //    Edge_Record::cost.
+
+        const Mat4 Q = vertex_quadrics[e->halfedge()->vertex()] +
+                       vertex_quadrics[e->halfedge()->twin()->vertex()];
+        const Mat4 system(
+            Vec4(Q[0][0], Q[0][1], Q[0][2], 0.f), Vec4(Q[0][1], Q[1][1], Q[1][2], 0.f),
+            Vec4(Q[0][2], Q[1][2], Q[2][2], 0.f), Vec4(Q[0][3], Q[1][3], Q[2][3], 1.f));
+        /* Assuming this matrix is invertible. A better solution should check the determinant and
+         * possibly resort to a heuristic point on the edge. */
+        const Vec4 solution = system.inverse()[3];
+        optimal = Vec3(solution[0], solution[1], solution[2]);
+        cost = dot((Q * solution), solution);
     }
     Halfedge_Mesh::EdgeRef edge;
     Vec3 optimal;
@@ -877,6 +888,9 @@ template<class T> struct PQueue {
     size_t size() {
         return queue.size();
     }
+    bool empty() {
+        return queue.empty();
+    }
 
     std::set<T> queue;
 };
@@ -888,7 +902,6 @@ template<class T> struct PQueue {
     further without destroying it.)
 */
 bool Halfedge_Mesh::simplify() {
-
     std::unordered_map<VertexRef, Mat4> vertex_quadrics;
     std::unordered_map<FaceRef, Mat4> face_quadrics;
     std::unordered_map<EdgeRef, Edge_Record> edge_records;
@@ -916,5 +929,78 @@ bool Halfedge_Mesh::simplify() {
     // but here simply calling collapse_edge() will not erase the elements.
     // You should use collapse_edge_erase() instead for the desired behavior.
 
-    return false;
+    /* First, compute face quadrics. */
+    for(FaceRef f = faces_begin(); f != faces_end(); f++) {
+        /* Think of distance query as translation of plane then projection onto its normal. */
+        const Mat4 T = Mat4::translate(-1.f * f->halfedge()->vertex()->pos);
+        Vec4 N(f->normal(), 0.f);
+        N.normalize();
+        Mat4 NNT = outer(N, N); /* outer(N, N) = NN^T. */
+        NNT[3][3] = 1.f;        /* Fix homogenous coord. */
+        const Mat4 Q = T.T() * NNT * T;
+        face_quadrics[f] = Q;
+    }
+
+    /* Second, compute vertex quadrics. */
+    for(VertexRef v = vertices_begin(); v != vertices_end(); v++) {
+        /* Quadric of a vertex is the sum of quadrics of faces around it. */
+        Mat4 vertexQuadric = Mat4::Zero;
+        HalfedgeRef currHalfedge = v->halfedge();
+        do {
+            vertexQuadric += face_quadrics[currHalfedge->face()];
+            currHalfedge = currHalfedge->twin()->next();
+        } while(currHalfedge != v->halfedge());
+        vertex_quadrics[v] = vertexQuadric;
+    }
+
+    /* Now construct a PQueue of edges. */
+    PQueue<Edge_Record> edgesPQueue;
+    for(EdgeRef e = edges_begin(); e != edges_end(); e++)
+        edgesPQueue.insert(Edge_Record(vertex_quadrics, e));
+
+    /* Collapse edges until faces reduce by a factor of 4. */
+    Size targetSize = n_faces() / 4;
+    if(targetSize < 2) return false;
+    while(!edgesPQueue.empty() && n_faces() > targetSize) {
+        EdgeRef edgeToCollapse = edgesPQueue.top().edge;
+
+        /* Remove immediate edge neighbors temporarily. */
+        std::set<EdgeRef> neighbors;
+        HalfedgeRef currHalfedge = edgeToCollapse->halfedge()->next();
+        while(currHalfedge->edge() != edgeToCollapse) {
+            neighbors.insert(currHalfedge->edge());
+            currHalfedge = currHalfedge->twin()->next();
+        }
+        currHalfedge = edgeToCollapse->halfedge()->twin()->next();
+        while(currHalfedge->edge() != edgeToCollapse) {
+            neighbors.insert(currHalfedge->edge());
+            currHalfedge = currHalfedge->twin()->next();
+        }
+        for(const EdgeRef& e : neighbors) edgesPQueue.remove(Edge_Record(vertex_quadrics, e));
+
+        /* Collapse edge. */
+        edgesPQueue.pop();
+        const Mat4 collapsedEdgeQuadric =
+            vertex_quadrics[edgeToCollapse->halfedge()->vertex()] +
+            vertex_quadrics[edgeToCollapse->halfedge()->twin()->vertex()];
+        std::optional<VertexRef> collapsedVertex = collapse_edge_erase(edgeToCollapse);
+
+        /* Re-Add neighboring edges if touching final vertex or if collapse failed. */
+        if(collapsedVertex.has_value()) {
+            /* Add the new collapsedVertex to quadrics. */
+            vertex_quadrics[*collapsedVertex] = collapsedEdgeQuadric;
+            /* Add un-collapsed neighbors. */
+            currHalfedge = (*collapsedVertex)->halfedge();
+            do {
+                if(neighbors.find(currHalfedge->edge()) != neighbors.end())
+                    edgesPQueue.insert(Edge_Record(vertex_quadrics, currHalfedge->edge()));
+                currHalfedge = currHalfedge->twin()->next();
+            } while(currHalfedge != (*collapsedVertex)->halfedge());
+        } else {
+            /* Add all removed neighbors if collapse fails. */
+            for(const EdgeRef& e : neighbors) edgesPQueue.insert(Edge_Record(vertex_quadrics, e));
+        }
+    }
+
+    return true;
 }
