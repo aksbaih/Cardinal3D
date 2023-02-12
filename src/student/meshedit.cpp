@@ -34,9 +34,21 @@
     edges and faces with a single face, returning the new face.
  */
 std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::erase_vertex(Halfedge_Mesh::VertexRef v) {
-
-    (void)v;
-    return std::nullopt;
+    /* Cannot erase vertices on boundary by definition. */
+    if(v->on_boundary()) return std::nullopt;
+    /* Loop over edges touching the vertex and erase them leaving the last one. */
+    while(v->degree() > 1) erase_edge(v->halfedge()->edge());
+    /* Finally, remove the last edge inside the final face. */
+    v->halfedge()->next()->vertex()->halfedge() = v->halfedge()->next();
+    v->halfedge()->twin()->prev()->next() = v->halfedge()->next();
+    FaceRef finalFace = v->halfedge()->face();
+    finalFace->halfedge() = v->halfedge()->next();
+    /* Erase dangling elements. */
+    erase(v->halfedge()->twin());
+    erase(v->halfedge()->edge());
+    erase(v->halfedge());
+    erase(v);
+    return finalFace;
 }
 
 /*
@@ -44,7 +56,12 @@ std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::erase_vertex(Halfedge_Mesh:
     merged face.
  */
 std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::erase_edge(Halfedge_Mesh::EdgeRef e) {
-    if(e->on_boundary()) return std::nullopt;
+    if(e->on_boundary()) /* Boundary edge case. */
+        return std::nullopt;
+    else if(e->halfedge()->vertex()->degree() == 1) /* Final edge for a vertex case. */
+        return erase_vertex(e->halfedge()->vertex());
+    else if(e->halfedge()->twin()->vertex()->degree() == 1)
+        return erase_vertex(e->halfedge()->twin()->vertex());
 
     HalfedgeRef removedHalfedge = e->halfedge();
     HalfedgeRef removedHalfedgeTwin = removedHalfedge->twin();
