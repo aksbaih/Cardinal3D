@@ -396,6 +396,7 @@ public:
         }
         Vec3 new_pos;
         bool is_new = true;
+        bool is_considered = false; /* For simplify, only consider edge once. */
         unsigned int _id = 0;
         HalfedgeRef _halfedge;
         friend class Halfedge_Mesh;

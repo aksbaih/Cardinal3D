@@ -135,11 +135,31 @@ std::optional<Halfedge_Mesh::EdgeRef> Halfedge_Mesh::erase_2gon(Halfedge_Mesh::F
 /*
     This method should collapse the given edge and return an iterator to
     the new vertex created by the collapse.
-    Rejects a collapse that results in a 0-degree vertex.
+    Rejects a collapse that results in a 0-degree vertex or that results in a non manifold fan.
 */
 std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_edge(Halfedge_Mesh::EdgeRef e) {
+    /* Reject collapsing a singular edge (to avoid 0-degree vertex). */
     if(e->halfedge()->vertex()->degree() == 1 && e->halfedge()->twin()->vertex()->degree() == 1)
         return std::nullopt;
+
+    /* Reject collapsing int hourglass-like non-manifold fan by rejecting collapses with overlapping
+     * neighbors not on the same collapsable face. */
+    std::set<VertexRef> neighborVertices;
+    HalfedgeRef currHalfedge = e->halfedge();
+    do {
+        neighborVertices.insert(currHalfedge->twin()->vertex());
+        currHalfedge = currHalfedge->twin()->next();
+    } while(currHalfedge != e->halfedge());
+    currHalfedge = e->halfedge()->next();
+    do {
+        VertexRef currVertex = currHalfedge->twin()->vertex();
+        /* Allow overlap on the common faces. */
+        if(currVertex != e->halfedge()->next()->twin()->vertex() &&
+           currVertex != e->halfedge()->twin()->next()->twin()->vertex() &&
+           neighborVertices.find(currVertex) != neighborVertices.end())
+            return std::nullopt;
+        currHalfedge = currHalfedge->twin()->next();
+    } while(currHalfedge != e->halfedge()->next());
 
     HalfedgeRef collapsedHalfedge = e->halfedge();
     FaceRef collapsedFace = collapsedHalfedge->face();
@@ -1011,14 +1031,19 @@ bool Halfedge_Mesh::simplify() {
 
     /* Now construct a PQueue of edges. */
     PQueue<Edge_Record> edgesPQueue;
-    for(EdgeRef e = edges_begin(); e != edges_end(); e++)
-        edgesPQueue.insert(Edge_Record(vertex_quadrics, e));
+    for(EdgeRef e = edges_begin(); e != edges_end(); e++) {
+        edge_records[e] = Edge_Record(vertex_quadrics, e);
+        edgesPQueue.insert(edge_records[e]);
+        e->is_considered = false;
+    }
 
     /* Collapse edges until faces reduce by a factor of 4. */
     Size targetSize = n_faces() / 4;
     if(targetSize < 2) return false;
     while(!edgesPQueue.empty() && n_faces() > targetSize) {
         EdgeRef edgeToCollapse = edgesPQueue.top().edge;
+        edgesPQueue.pop();
+        edgeToCollapse->is_considered = true;
 
         /* Remove immediate edge neighbors temporarily. */
         std::set<EdgeRef> neighbors;
@@ -1032,29 +1057,36 @@ bool Halfedge_Mesh::simplify() {
             neighbors.insert(currHalfedge->edge());
             currHalfedge = currHalfedge->twin()->next();
         }
-        for(const EdgeRef& e : neighbors) edgesPQueue.remove(Edge_Record(vertex_quadrics, e));
+        for(const EdgeRef& e : neighbors) edgesPQueue.remove(edge_records[e]);
 
         /* Collapse edge. */
-        edgesPQueue.pop();
         const Mat4 collapsedEdgeQuadric =
             vertex_quadrics[edgeToCollapse->halfedge()->vertex()] +
             vertex_quadrics[edgeToCollapse->halfedge()->twin()->vertex()];
         std::optional<VertexRef> collapsedVertex = collapse_edge_erase(edgeToCollapse);
 
         /* Re-Add neighboring edges if touching final vertex or if collapse failed. */
-        if(collapsedVertex.has_value()) {
+        if(collapsedVertex) {
             /* Add the new collapsedVertex to quadrics. */
             vertex_quadrics[*collapsedVertex] = collapsedEdgeQuadric;
             /* Add un-collapsed neighbors. */
             currHalfedge = (*collapsedVertex)->halfedge();
             do {
-                if(neighbors.find(currHalfedge->edge()) != neighbors.end())
-                    edgesPQueue.insert(Edge_Record(vertex_quadrics, currHalfedge->edge()));
+                if(neighbors.find(currHalfedge->edge()) != neighbors.end() &&
+                   !currHalfedge->edge()->is_considered) {
+                    edge_records[currHalfedge->edge()] =
+                        Edge_Record(vertex_quadrics, currHalfedge->edge());
+                    edgesPQueue.insert(edge_records[currHalfedge->edge()]);
+                }
                 currHalfedge = currHalfedge->twin()->next();
             } while(currHalfedge != (*collapsedVertex)->halfedge());
         } else {
             /* Add all removed neighbors if collapse fails. */
-            for(const EdgeRef& e : neighbors) edgesPQueue.insert(Edge_Record(vertex_quadrics, e));
+            for(const EdgeRef& e : neighbors) {
+                if(e->is_considered) continue;
+                edge_records[e] = Edge_Record(vertex_quadrics, e);
+                edgesPQueue.insert(edge_records[e]);
+            }
         }
     }
 
