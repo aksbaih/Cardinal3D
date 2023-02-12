@@ -362,7 +362,7 @@ public:
         Vertex(unsigned int id) : _id(id) {
         }
         Vec3 new_pos;
-        bool is_new = false;
+        bool is_new = true;
         unsigned int _id = 0;
         HalfedgeRef _halfedge;
         friend class Halfedge_Mesh;
@@ -395,7 +395,7 @@ public:
         Edge(unsigned int id) : _id(id) {
         }
         Vec3 new_pos;
-        bool is_new = false;
+        bool is_new = true;
         unsigned int _id = 0;
         HalfedgeRef _halfedge;
         friend class Halfedge_Mesh;
