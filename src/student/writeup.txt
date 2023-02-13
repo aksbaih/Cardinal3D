@@ -1,0 +1,26 @@
+SUID: akram
+
+Created mode: ./Apple.dae
+
+----------
+Implemented:
+----------
+Basic:
+  FaceBevel
+  EdgeCollapse
+  EdgeFlip
+  EdgeSplit
+  Triangulation
+  LinearSubdivision
+  CatmullClarkSubdivision
+  Simplification
+
+Advanced:
+  EraseVertex
+  EraseEdge
+  EdgeCollapse[Boundary]
+  EdgeSplit[Boundary]
+  LoopSubdivision
+
+
+
