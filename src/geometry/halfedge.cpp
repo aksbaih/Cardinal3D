@@ -120,7 +120,7 @@ unsigned int Halfedge_Mesh::Vertex::degree() const {
     unsigned int d = 0;
     HalfedgeCRef h = _halfedge;
     do {
-        if(!h->face()->is_boundary()) d++;
+        d++;
         h = h->twin()->next();
     } while(h != _halfedge);
     return d;
