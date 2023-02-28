@@ -25,13 +25,27 @@ Trace Sphere::hit(const Ray& ray) const {
     // but only the _later_ one is within ray.dist_bounds, you should
     // return that one!
 
-    Trace ret;
-    ret.origin = ray.point;
-    ret.hit = false;       // was there an intersection?
-    ret.distance = 0.0f;   // at what distance did the intersection occur?
-    ret.position = Vec3{}; // where was the intersection?
-    ret.normal = Vec3{};   // what was the surface normal at the intersection?
-    return ret;
+    /* This formula is derived from from writing the implicit formula for a sphere. Namely, the
+     * intersection point is constrained to have norm r. Solutions found using the quadratic
+     * formula. */
+
+    /* Quadratic system setup. */
+    const float a = ray.dir.norm_squared();
+    const float b = 2.f * dot(ray.point, ray.dir);
+    const float c = ray.point.norm_squared() - radius * radius;
+
+    const float rootTerm = b * b - 4.f * a * c;
+    const float smallerRoot = (-1.f * b - sqrtf(rootTerm)) / (2.f * a);
+    const float biggerRoot = (-1.f * b + sqrtf(rootTerm)) / (2.f * a);
+
+    /* Decide on intersections. */
+    if(rootTerm >= -0.f && smallerRoot >= ray.dist_bounds.x && smallerRoot <= ray.dist_bounds.y)
+        return Trace{true, smallerRoot, ray.point + smallerRoot * ray.dir,
+                     (ray.point + smallerRoot * ray.dir).normalize(), ray.point};
+    if(rootTerm >= -0.f && biggerRoot >= ray.dist_bounds.x && biggerRoot <= ray.dist_bounds.y)
+        return Trace{true, biggerRoot, ray.point + biggerRoot * ray.dir,
+                     (ray.point + biggerRoot * ray.dir).normalize(), ray.point};
+    return Trace{false};
 }
 
 } // namespace PT
