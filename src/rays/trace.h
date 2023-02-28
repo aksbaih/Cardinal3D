@@ -7,6 +7,12 @@ namespace PT {
 
 struct Trace {
 
+    Trace(bool hit_ = false, float distance_ = 0.f, Vec3 position_ = Vec3(), Vec3 normal_ = Vec3(),
+          Vec3 origin_ = Vec3(), int material_ = 0)
+        : hit(hit_), distance(distance_), position(position_), normal(normal_), origin(origin_),
+          material(material_) {
+    }
+
     bool hit = false;
     float distance = 0.0f;
     Vec3 position, normal, origin;
