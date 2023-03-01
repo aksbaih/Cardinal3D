@@ -59,8 +59,8 @@ Trace Triangle::hit(const Ray& ray) const {
         return Trace{false};
 
     /* Otherwise, populate the hit appropriately. */
-    return Trace{true, t, ray.point + ray.dir * t,
-                 bc0 * v_0.normal + bc1 * v_1.normal + bc2 * v_2.normal, ray.point};
+    return Trace{true, t, ray.at(t), bc0 * v_0.normal + bc1 * v_1.normal + bc2 * v_2.normal,
+                 ray.point};
 }
 
 Triangle::Triangle(Tri_Mesh_Vert* verts, unsigned int v0, unsigned int v1, unsigned int v2)

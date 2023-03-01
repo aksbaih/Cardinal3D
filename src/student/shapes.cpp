@@ -40,11 +40,11 @@ Trace Sphere::hit(const Ray& ray) const {
 
     /* Decide on intersections. */
     if(rootTerm >= -0.f && smallerRoot >= ray.dist_bounds.x && smallerRoot <= ray.dist_bounds.y)
-        return Trace{true, smallerRoot, ray.point + smallerRoot * ray.dir,
-                     (ray.point + smallerRoot * ray.dir).normalize(), ray.point};
+        return Trace{true, smallerRoot, ray.at(smallerRoot), ray.at(smallerRoot).normalize(),
+                     ray.point};
     if(rootTerm >= -0.f && biggerRoot >= ray.dist_bounds.x && biggerRoot <= ray.dist_bounds.y)
-        return Trace{true, biggerRoot, ray.point + biggerRoot * ray.dir,
-                     (ray.point + biggerRoot * ray.dir).normalize(), ray.point};
+        return Trace{true, biggerRoot, ray.at(biggerRoot), ray.at(biggerRoot).normalize(),
+                     ray.point};
     return Trace{false};
 }
 
