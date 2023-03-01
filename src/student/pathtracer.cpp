@@ -83,7 +83,7 @@ Spectrum Pathtracer::trace_ray(const Ray& ray) {
     // queries before you implement real lighting in Tasks 4 and 5. (i.e, anything that gets hit is
     // not black.) You should change this to (0,0,0) and accumulate the direct and indirect lighting
     // computed below.
-    Spectrum radiance_out = Spectrum(0.25f);
+    Spectrum radiance_out = Spectrum(0.f);
     {
 
         // lambda function to sample a light. Called in loop below.
@@ -119,11 +119,16 @@ Spectrum Pathtracer::trace_ray(const Ray& ray) {
                 // modify the time_bounds of your shadow ray to account for this. Using EPS_F is
                 // recommended.
 
+                const Ray shadowRay{hit.position, sample.direction,
+                                    Vec2{EPS_F, sample.distance - EPS_F}};
+                const bool inShadow = scene.hit(shadowRay).hit;
+
                 // Note: that along with the typical cos_theta, pdf factors, we divide by samples.
                 // This is because we're doing another monte-carlo estimate of the lighting from
                 // area lights here.
-                radiance_out +=
-                    (cos_theta / (samples * sample.pdf)) * sample.radiance * attenuation;
+                if(!inShadow)
+                    radiance_out +=
+                        (cos_theta / (samples * sample.pdf)) * sample.radiance * attenuation;
             }
         };
 
