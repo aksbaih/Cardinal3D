@@ -13,7 +13,7 @@ namespace PT {
 
 struct BSDF_Sample {
 
-    Spectrum emissive;
+    Spectrum emissive = Spectrum{0.f};
     Spectrum attenuation;
     Vec3 direction;
     float pdf;
