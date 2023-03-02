@@ -9,7 +9,7 @@ Vec3 reflect(Vec3 dir) {
 
     // TODO (PathTracer): Task 6
     // Return reflection of dir about the surface normal (0,1,0).
-    return Vec3();
+    return Vec3{-dir.x, dir.y, -dir.z};
 }
 
 Vec3 refract(Vec3 out_dir, float index_of_refraction, bool& was_internal) {
@@ -35,9 +35,8 @@ BSDF_Sample BSDF_Lambertian::sample(Vec3 out_dir) const {
     // Implement lambertian BSDF. Use of BSDF_Lambertian::sampler may be useful
 
     BSDF_Sample ret;
-    ret.attenuation = Spectrum(); // What is the ratio of reflected/incoming light?
-    ret.direction = Vec3();       // What direction should we sample incoming light from?
-    ret.pdf = 0.0f;               // Was was the PDF of the sampled direction?
+    ret.direction = sampler.sample(ret.pdf);
+    ret.attenuation = evaluate(out_dir, ret.direction);
     return ret;
 }
 
@@ -51,9 +50,10 @@ BSDF_Sample BSDF_Mirror::sample(Vec3 out_dir) const {
     // Implement mirror BSDF
 
     BSDF_Sample ret;
-    ret.attenuation = Spectrum(); // What is the ratio of reflected/incoming light?
-    ret.direction = Vec3();       // What direction should we sample incoming light from?
-    ret.pdf = 0.0f; // Was was the PDF of the sampled direction? (In this case, the PMF)
+    ret.direction = reflect(out_dir); // What direction should we sample incoming light from?
+    ret.attenuation =
+        evaluate(out_dir, ret.direction); // What is the ratio of reflected/incoming light?
+    ret.pdf = 1.f; // Was was the PDF of the sampled direction? (In this case, the PMF)
     return ret;
 }
 
@@ -63,6 +63,8 @@ Spectrum BSDF_Mirror::evaluate(Vec3 out_dir, Vec3 in_dir) const {
     // that we assume these are single exact directions in a
     // continuous space, just assume that we never hit them
     // _exactly_ and always return 0.
+    const float cosIn = clamp(in_dir.y, 0.f, 1.f);
+    if(reflect(in_dir) == out_dir) return reflectance / cosIn;
     return {};
 }
 

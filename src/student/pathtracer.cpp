@@ -40,7 +40,6 @@ Spectrum Pathtracer::trace_pixel(size_t x, size_t y) {
     const Vec2 sample((xy + sampleOffset) / wh);
 
     const Ray out = camera.generate_ray(sample);
-    if(RNG::coin_flip(0.00003f)) log_ray(out, 10.0f);
 
     return trace_ray(out);
 }
@@ -121,14 +120,13 @@ Spectrum Pathtracer::trace_ray(const Ray& ray) {
 
                 const Ray shadowRay{hit.position, sample.direction,
                                     Vec2{EPS_F, sample.distance - EPS_F}};
-                const bool inShadow = scene.hit(shadowRay).hit;
+                if(scene.hit(shadowRay).hit) continue;
 
                 // Note: that along with the typical cos_theta, pdf factors, we divide by samples.
                 // This is because we're doing another monte-carlo estimate of the lighting from
                 // area lights here.
-                if(!inShadow)
-                    radiance_out +=
-                        (cos_theta / (samples * sample.pdf)) * sample.radiance * attenuation;
+                radiance_out +=
+                    (cos_theta / (samples * sample.pdf)) * sample.radiance * attenuation;
             }
         };
 
@@ -153,16 +151,36 @@ Spectrum Pathtracer::trace_ray(const Ray& ray) {
 
     // (3) Compute the throughput of the recursive ray. This should be the current ray's
     // throughput scaled by the BSDF attenuation, cos(theta), and BSDF sample PDF.
-    // Potentially terminate the path using Russian roulette as a function of the new throughput.
-    // Note that allowing the termination probability to approach 1 may cause extra speckling.
+    // Potentially terminate the path using Russian roulette as a function of the new
+    // throughput. Note that allowing the termination probability to approach 1 may cause extra
+    // speckling.
 
-    // (4) Create new scene-space ray and cast it to get incoming light. As with shadow rays, you
-    // should modify time_bounds so that the ray does not intersect at time = 0. Remember to
+    // (4) Create new scene-space ray and cast it to get incoming light. As with shadow rays,
+    // you should modify time_bounds so that the ray does not intersect at time = 0. Remember to
     // set the new throughput and depth values.
 
     // (5) Add contribution due to incoming light with proper weighting. Remember to add in
     // the BSDF sample emissive term.
-    return radiance_out;
+
+    Spectrum indirectRadianceContribution{0.f};
+    BSDF_Sample indirectBSDFSample = bsdf.sample(out_dir);
+    const float cosInDir = clamp(indirectBSDFSample.direction.y, 0.f, 1.f);
+    indirectBSDFSample.transform(object_to_world);
+    Ray indirectRay{hit.position, indirectBSDFSample.direction,
+                    Vec2{EPS_F, std::numeric_limits<float>::max()}, ray.depth + 1};
+    indirectRay.throughput =
+        ray.throughput * indirectBSDFSample.attenuation * cosInDir / indirectBSDFSample.pdf;
+    const float russianRouletteSurviveProbability =
+        clamp(indirectRay.throughput.luma(), .45f, .99f);
+
+    if(RNG::coin_flip(russianRouletteSurviveProbability) && indirectRay.depth <= max_depth) {
+        const Spectrum indirectRadiance = trace_ray(indirectRay);
+        indirectRadianceContribution += indirectRadiance / russianRouletteSurviveProbability;
+    }
+
+    const Spectrum emissionContribution{indirectBSDFSample.emissive * (ray.depth == 0 ? 1.f : 0.f)};
+
+    return (radiance_out + emissionContribution) * ray.throughput + indirectRadianceContribution;
 }
 
 } // namespace PT
