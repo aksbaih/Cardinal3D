@@ -3,6 +3,7 @@
 #include "../rays/samplers.h"
 #include "../util/rand.h"
 #include "debug.h"
+#include <iostream>
 
 namespace PT {
 
@@ -164,23 +165,23 @@ Spectrum Pathtracer::trace_ray(const Ray& ray) {
 
     Spectrum indirectRadianceContribution{0.f};
     BSDF_Sample indirectBSDFSample = bsdf.sample(out_dir);
-    const float cosInDir = clamp(indirectBSDFSample.direction.y, 0.f, 1.f);
+    const float cosInDir = indirectBSDFSample.direction.y;
+
     indirectBSDFSample.transform(object_to_world);
     Ray indirectRay{hit.position, indirectBSDFSample.direction,
                     Vec2{EPS_F, std::numeric_limits<float>::max()}, ray.depth + 1};
     indirectRay.throughput =
         ray.throughput * indirectBSDFSample.attenuation * cosInDir / indirectBSDFSample.pdf;
-    const float russianRouletteSurviveProbability =
-        clamp(indirectRay.throughput.luma(), .45f, .99f);
 
-    if(RNG::coin_flip(russianRouletteSurviveProbability) && indirectRay.depth <= max_depth) {
-        const Spectrum indirectRadiance = trace_ray(indirectRay);
-        indirectRadianceContribution += indirectRadiance / russianRouletteSurviveProbability;
+    const float russianRouletteSurviveProbability = clamp(indirectRay.throughput.luma(), .2f, .9f);
+    if(indirectRay.throughput.valid() && RNG::coin_flip(russianRouletteSurviveProbability) &&
+       indirectRay.depth < max_depth) {
+        indirectRay.throughput *= 1.f / russianRouletteSurviveProbability;
+        indirectRadianceContribution = trace_ray(indirectRay);
     }
 
-    const Spectrum emissionContribution{indirectBSDFSample.emissive * (ray.depth == 0 ? 1.f : 0.f)};
-
-    return (radiance_out + emissionContribution) * ray.throughput + indirectRadianceContribution;
+    return (radiance_out + indirectBSDFSample.emissive) * ray.throughput +
+           indirectRadianceContribution;
 }
 
 } // namespace PT
