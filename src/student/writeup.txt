@@ -1,26 +1,18 @@
-SUID: akram
+SUID: akram ; demarcod
 
-Created mode: ./Apple.dae
+Working:
 
-----------
-Implemented:
-----------
-Basic:
-  FaceBevel
-  EdgeCollapse
-  EdgeFlip
-  EdgeSplit
-  Triangulation
-  LinearSubdivision
-  CatmullClarkSubdivision
-  Simplification
+Task 1: Generating Camera Rays (15 pts)
+Task 2: Ray-Triangle Intersection (22 pts)
+Task 3: BVH intersection (30 pts)
+Task 4: Shadow Rays (10 pts)
+Task 6: Perfect Mirror Reflection (15 pts)
+Ray-Sphere intersection (1 pt, descried in Task 2)
+Task 5: Global illumination path tracing with Russian roulette (6 pts)
+Transmissive surfaces, w/ transmission given by the Fresnel equations) (4 pts, described in Task 6)
+EXTRA: emitted light reflected on reflective objects but not others.
 
-Advanced:
-  EraseVertex
-  EraseEdge
-  EdgeCollapse[Boundary]
-  EdgeSplit[Boundary]
-  LoopSubdivision
+Broken:
 
-
-
+There is a bug in the BVH flat BBox intersection that causes some false positive,
+leading to dark regions. To avoid it,  BVH<Primitive>::hit disables BVH acceleration for now.
