@@ -400,30 +400,30 @@ std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::bevel_face(Halfedge_Mesh::F
         VertexRef vertex = new_vertex();
         vertex->pos = halfedge->vertex()->pos;
         /* Right, Top, Left. */
-        HalfedgeRef halfedges[] = {new_halfedge(), new_halfedge(), new_halfedge()};
+        HalfedgeRef halfEdges[] = {new_halfedge(), new_halfedge(), new_halfedge()};
         /* Top. */
         HalfedgeRef topTwin = new_halfedge();
         EdgeRef topEdge = new_edge();
         /* Chain the halfedges. */
-        halfedge->next() = halfedges[0];
+        halfedge->next() = halfEdges[0];
         halfedge->face() = face;
-        halfedges[0]->vertex() = halfedge->twin()->vertex();
-        halfedges[0]->face() = face;
-        halfedges[0]->next() = halfedges[1];
-        halfedges[1]->face() = face;
-        halfedges[1]->twin() = topTwin;
-        topTwin->twin() = halfedges[1];
+        halfEdges[0]->vertex() = halfedge->twin()->vertex();
+        halfEdges[0]->face() = face;
+        halfEdges[0]->next() = halfEdges[1];
+        halfEdges[1]->face() = face;
+        halfEdges[1]->twin() = topTwin;
+        topTwin->twin() = halfEdges[1];
         topTwin->vertex() = vertex;
         vertex->halfedge() = topTwin;
         topTwin->face() = mainNewFace;
         mainNewFace->halfedge() = topTwin;
         topEdge->halfedge() = topTwin;
         topTwin->edge() = topEdge;
-        halfedges[1]->edge() = topEdge;
-        halfedges[1]->next() = halfedges[2];
-        halfedges[2]->face() = face;
-        halfedges[2]->vertex() = vertex;
-        halfedges[2]->next() = halfedge;
+        halfEdges[1]->edge() = topEdge;
+        halfEdges[1]->next() = halfEdges[2];
+        halfEdges[2]->face() = face;
+        halfEdges[2]->vertex() = vertex;
+        halfEdges[2]->next() = halfedge;
         /* Move on to the next halfedge face. */
         halfedge = nextHalfedge;
     } while(halfedge != f->halfedge());
@@ -558,7 +558,7 @@ void Halfedge_Mesh::bevel_face_positions(const std::vector<Vec3>& start_position
 
     Vec3 centroid(0, 0, 0);
     for(size_t i = 0; i < start_positions.size(); i++) centroid += start_positions[i];
-    centroid = centroid / start_positions.size();
+    centroid = centroid / float(start_positions.size());
 
     Vec3 normal(face->normal());
     normal.normalize();

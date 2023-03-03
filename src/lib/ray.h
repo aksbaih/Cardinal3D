@@ -13,8 +13,9 @@ struct Ray {
     Ray() = default;
 
     /// Create Ray from point and direction
-    explicit Ray(Vec3 point, Vec3 dir)
-        : point(point), dir(dir.unit()), dist_bounds(0.0f, std::numeric_limits<float>::max()) {
+    explicit Ray(Vec3 point, Vec3 dir,
+                 Vec2 dist_bounds = Vec2{0.0f, std::numeric_limits<float>::max()}, size_t depth = 0)
+        : point(point), dir(dir.unit()), dist_bounds(dist_bounds), depth(depth), throughput(1.f) {
     }
 
     Ray(const Ray&) = default;
@@ -47,6 +48,9 @@ struct Ray {
     /// The minimum and maximum distance at which this ray can encounter collisions
     /// note that this field is mutable, meaning it can be changed on const Rays
     mutable Vec2 dist_bounds = Vec2(0.0f, std::numeric_limits<float>::infinity());
+
+    bool log = false;
+    bool allowEmit = false;
 };
 
 inline std::ostream& operator<<(std::ostream& out, Ray r) {

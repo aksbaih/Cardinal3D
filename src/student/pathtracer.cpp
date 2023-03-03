@@ -3,6 +3,7 @@
 #include "../rays/samplers.h"
 #include "../util/rand.h"
 #include "debug.h"
+#include <iostream>
 
 namespace PT {
 
@@ -27,12 +28,21 @@ Spectrum Pathtracer::trace_pixel(size_t x, size_t y) {
     // Tip: you may want to use log_ray for debugging. Given ray t, the following lines
     // of code will log .03% of all rays (see util/rand.h) for visualization in the app.
     // see student/debug.h for more detail.
-    //if (RNG::coin_flip(0.0003f))
+    // if (RNG::coin_flip(0.0003f))
     //    log_ray(out, 10.0f);
 
     // As an example, the code below generates a ray through the bottom left of the
     // specified pixel
-    Ray out = camera.generate_ray(xy / wh);
+    // Ray out = camera.generate_ray(xy / wh);
+
+    float _; /* Unused. */
+    const Vec2 sampleOffset(n_samples == 1 ? Vec2(.5f, .5f)
+                                           : Samplers::Rect::Uniform(Vec2(1.f)).sample(_));
+    const Vec2 sample((xy + sampleOffset) / wh);
+
+    Ray out = camera.generate_ray(sample);
+    out.allowEmit = true;
+
     return trace_ray(out);
 }
 
@@ -71,9 +81,10 @@ Spectrum Pathtracer::trace_ray(const Ray& ray) {
 
     // TODO (PathTracer): Task 4
     // The starter code sets radiance_out to (0.25,0.25,0.25) so that you can test your geometry
-    // queries before you implement real lighting in Tasks 4 and 5. (i.e, anything that gets hit is not black.)
-    // You should change this to (0,0,0) and accumulate the direct and indirect lighting computed below.
-    Spectrum radiance_out = Spectrum(0.25f);
+    // queries before you implement real lighting in Tasks 4 and 5. (i.e, anything that gets hit is
+    // not black.) You should change this to (0,0,0) and accumulate the direct and indirect lighting
+    // computed below.
+    Spectrum radiance_out = Spectrum(0.f);
     {
 
         // lambda function to sample a light. Called in loop below.
@@ -83,8 +94,9 @@ Spectrum Pathtracer::trace_ray(const Ray& ray) {
             int samples = light.is_discrete() ? 1 : (int)n_area_samples;
             for(int i = 0; i < samples; i++) {
 
-                // Grab a sample of the light source. See rays/light.h for definition of this struct.
-                // Most importantly for Task 4, it contains the distance to the light from hit.position. 
+                // Grab a sample of the light source. See rays/light.h for definition of this
+                // struct. Most importantly for Task 4, it contains the distance to the light from
+                // hit.position.
                 Light_Sample sample = light.sample(hit.position);
                 Vec3 in_dir = world_to_object.rotate(sample.direction);
 
@@ -108,10 +120,15 @@ Spectrum Pathtracer::trace_ray(const Ray& ray) {
                 // modify the time_bounds of your shadow ray to account for this. Using EPS_F is
                 // recommended.
 
+                const Ray shadowRay{hit.position, sample.direction,
+                                    Vec2{EPS_F, sample.distance - EPS_F}};
+                if(scene.hit(shadowRay).hit) continue;
+
                 // Note: that along with the typical cos_theta, pdf factors, we divide by samples.
                 // This is because we're doing another monte-carlo estimate of the lighting from
                 // area lights here.
-                radiance_out += (cos_theta / (samples * sample.pdf)) * sample.radiance * attenuation;
+                radiance_out +=
+                    (cos_theta / (samples * sample.pdf)) * sample.radiance * attenuation;
             }
         };
 
@@ -120,10 +137,8 @@ Spectrum Pathtracer::trace_ray(const Ray& ray) {
         if(!bsdf.is_discrete()) {
 
             // loop over all the lights and accumulate radiance.
-            for(const auto& light : lights)
-                sample_light(light);
-            if(env_light.has_value())
-                sample_light(env_light.value());
+            for(const auto& light : lights) sample_light(light);
+            if(env_light.has_value()) sample_light(env_light.value());
         }
     }
 
@@ -138,16 +153,38 @@ Spectrum Pathtracer::trace_ray(const Ray& ray) {
 
     // (3) Compute the throughput of the recursive ray. This should be the current ray's
     // throughput scaled by the BSDF attenuation, cos(theta), and BSDF sample PDF.
-    // Potentially terminate the path using Russian roulette as a function of the new throughput.
-    // Note that allowing the termination probability to approach 1 may cause extra speckling.
+    // Potentially terminate the path using Russian roulette as a function of the new
+    // throughput. Note that allowing the termination probability to approach 1 may cause extra
+    // speckling.
 
-    // (4) Create new scene-space ray and cast it to get incoming light. As with shadow rays, you
-    // should modify time_bounds so that the ray does not intersect at time = 0. Remember to
+    // (4) Create new scene-space ray and cast it to get incoming light. As with shadow rays,
+    // you should modify time_bounds so that the ray does not intersect at time = 0. Remember to
     // set the new throughput and depth values.
 
     // (5) Add contribution due to incoming light with proper weighting. Remember to add in
     // the BSDF sample emissive term.
-    return radiance_out;
+
+    Spectrum indirectRadianceContribution{0.f};
+    BSDF_Sample indirectBSDFSample = bsdf.sample(out_dir);
+    const float cosInDir = indirectBSDFSample.direction.y;
+
+    indirectBSDFSample.transform(object_to_world);
+    Ray indirectRay{hit.position, indirectBSDFSample.direction,
+                    Vec2{EPS_F, std::numeric_limits<float>::max()}, ray.depth + 1};
+    indirectRay.allowEmit = bsdf.is_discrete();
+    indirectRay.throughput =
+        ray.throughput * indirectBSDFSample.attenuation * cosInDir / indirectBSDFSample.pdf;
+
+    const float russianRouletteSurviveProbability = clamp(indirectRay.throughput.luma(), .4f, .95f);
+    if(indirectRay.throughput.valid() && RNG::coin_flip(russianRouletteSurviveProbability) &&
+       indirectRay.depth < max_depth) {
+        indirectRay.throughput *= 1.f / russianRouletteSurviveProbability;
+        indirectRadianceContribution = trace_ray(indirectRay);
+    }
+    if(!ray.allowEmit) indirectBSDFSample.emissive = Spectrum{0.f};
+
+    return (radiance_out + indirectBSDFSample.emissive) * ray.throughput +
+           indirectRadianceContribution;
 }
 
 } // namespace PT
