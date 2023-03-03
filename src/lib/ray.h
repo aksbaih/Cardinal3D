@@ -50,6 +50,7 @@ struct Ray {
     mutable Vec2 dist_bounds = Vec2(0.0f, std::numeric_limits<float>::infinity());
 
     bool log = false;
+    bool allowEmit = false;
 };
 
 inline std::ostream& operator<<(std::ostream& out, Ray r) {

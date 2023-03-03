@@ -30,6 +30,7 @@ struct BBox {
         min = Vec3(FLT_MAX);
         max = Vec3(-FLT_MAX);
     }
+    bool contains(Vec3 point) const;
 
     /// Expand bounding box to include point
     void enclose(Vec3 point) {
