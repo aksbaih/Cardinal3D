@@ -11,7 +11,6 @@ bool BBox::contains(Vec3 point) const {
 }
 
 bool BBox::hit(const Ray& ray, Vec2& times) const {
-    return true;
 
     // TODO (PathTracer):
     // Implement ray - bounding box intersection test
