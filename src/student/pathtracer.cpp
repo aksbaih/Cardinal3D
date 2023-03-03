@@ -40,7 +40,8 @@ Spectrum Pathtracer::trace_pixel(size_t x, size_t y) {
                                            : Samplers::Rect::Uniform(Vec2(1.f)).sample(_));
     const Vec2 sample((xy + sampleOffset) / wh);
 
-    const Ray out = camera.generate_ray(sample);
+    Ray out = camera.generate_ray(sample);
+    out.allowEmit = true;
 
     return trace_ray(out);
 }
@@ -170,15 +171,17 @@ Spectrum Pathtracer::trace_ray(const Ray& ray) {
     indirectBSDFSample.transform(object_to_world);
     Ray indirectRay{hit.position, indirectBSDFSample.direction,
                     Vec2{EPS_F, std::numeric_limits<float>::max()}, ray.depth + 1};
+    indirectRay.allowEmit = bsdf.is_discrete();
     indirectRay.throughput =
         ray.throughput * indirectBSDFSample.attenuation * cosInDir / indirectBSDFSample.pdf;
 
-    const float russianRouletteSurviveProbability = clamp(indirectRay.throughput.luma(), .2f, .9f);
+    const float russianRouletteSurviveProbability = clamp(indirectRay.throughput.luma(), .4f, .95f);
     if(indirectRay.throughput.valid() && RNG::coin_flip(russianRouletteSurviveProbability) &&
        indirectRay.depth < max_depth) {
         indirectRay.throughput *= 1.f / russianRouletteSurviveProbability;
         indirectRadianceContribution = trace_ray(indirectRay);
     }
+    if(!ray.allowEmit) indirectBSDFSample.emissive = Spectrum{0.f};
 
     return (radiance_out + indirectBSDFSample.emissive) * ray.throughput +
            indirectRadianceContribution;

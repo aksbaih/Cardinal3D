@@ -13,6 +13,9 @@ BBox Triangle::bbox() const {
     // account for that here, or later on in BBox::intersect
 
     BBox box;
+    box.enclose(vertex_list[v0].position);
+    box.enclose(vertex_list[v1].position);
+    box.enclose(vertex_list[v2].position);
     return box;
 }
 
@@ -24,12 +27,6 @@ Trace Triangle::hit(const Ray& ray) const {
     Tri_Mesh_Vert v_0 = vertex_list[v0];
     Tri_Mesh_Vert v_1 = vertex_list[v1];
     Tri_Mesh_Vert v_2 = vertex_list[v2];
-
-    // here just to avoid unused variable warnings, students should remove the following three
-    // lines.
-    (void)v_0;
-    (void)v_1;
-    (void)v_2;
 
     // TODO (PathTracer): Task 2
     // Intersect this ray with a triangle defined by the above three points.

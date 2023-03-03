@@ -6,6 +6,7 @@
 
 #include "trace.h"
 
+#define NUM_BUCKETS 16
 namespace PT {
 
 template<typename Primitive> class BVH {
@@ -22,6 +23,7 @@ public:
 
     BBox bbox() const;
     Trace hit(const Ray& ray) const;
+    Trace hit(const Ray& ray, size_t nodeIdx) const;
 
     BVH copy() const;
     size_t visualize(GL::Lines& lines, GL::Lines& active, size_t level, const Mat4& trans) const;
@@ -38,6 +40,10 @@ private:
         friend class BVH<Primitive>;
     };
     size_t new_node(BBox box = {}, size_t start = 0, size_t size = 0, size_t l = 0, size_t r = 0);
+
+    void bvh_recurse(size_t max_leaf_size, size_t parentAddr);
+    Vec3 cost_fn(BBox parentBb, BBox bucketBbs[3][NUM_BUCKETS], int primCounts[3][NUM_BUCKETS],
+                 size_t partition) const;
 
     std::vector<Node> nodes;
     std::vector<Primitive> primitives;

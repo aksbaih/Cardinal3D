@@ -249,7 +249,7 @@ void Pathtracer::begin_render(Scene& layout_scene, const Camera& cam, bool add_s
         build_time = SDL_GetPerformanceCounter() - build_time;
     }
     render_time = SDL_GetPerformanceCounter();
-    
+
     camera = cam;
 
     for(size_t s = 0; s < n_samples; s += samples_per_epoch) {
